@@ -1,9 +1,8 @@
-name: frontend-ci
+name: ci
 
 on:
   push:
     branches: [main]
-    paths: ['frontend/**', '.github/workflows/frontend-ci.yml']
   pull_request:
     branches: [main]
 
@@ -11,11 +10,89 @@ permissions:
   contents: read
 
 concurrency:
-  group: frontend-ci-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  quality:
+  backend-quality:
+    name: Backend - lint and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+
+      - name: SonarQube Cloud scan and quality gate
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          projectBaseDir: backend
+          args: -Dsonar.qualitygate.wait=true
+
+  backend-image:
+    name: Backend - build, scan, push
+    needs: backend-quality
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (not pushed yet)
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          load: true
+          push: false
+          tags: scan-me-backend:${{ github.sha }}
+
+      - name: Trivy scan (fails on CRITICAL or HIGH)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: scan-me-backend:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Set lowercase image owner
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_OWNER }}/zuri-backend:${{ github.sha }}
+            ghcr.io/${{ env.IMAGE_OWNER }}/zuri-backend:latest
+
+  frontend-quality:
     name: Frontend - lint and build
     runs-on: ubuntu-latest
     defaults:
@@ -33,11 +110,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
-
       - run: npm run lint
-
       - run: npm test --if-present
-
       - run: npm run build
 
       - name: SonarQube Cloud scan and quality gate
@@ -48,16 +122,15 @@ jobs:
           projectBaseDir: frontend
           args: -Dsonar.qualitygate.wait=true
 
-  image:
-    name: Frontend - build and scan
-    needs: quality
+  frontend-image:
+    name: Frontend - build, scan, push
+    needs: frontend-quality
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
-
       - uses: docker/setup-buildx-action@v3
 
       - name: Build image (not pushed yet)
