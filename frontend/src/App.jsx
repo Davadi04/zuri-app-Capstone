@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";git status
 import useCart from "./hooks/useCart";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
