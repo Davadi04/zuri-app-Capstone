@@ -25,3 +25,7 @@ variable "instance_type" {
 variable "allowed_http_cidrs" {
   type = list(string)
 }
+
+variable "ami_id" {
+  type = string
+}

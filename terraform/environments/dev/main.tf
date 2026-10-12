@@ -35,6 +35,7 @@ module "compute" {
   source            = "../../modules/compute"
   name              = "zuri-${var.env}"
   instance_type     = var.instance_type
+  ami_id            = var.ami_id
   subnet_id         = module.network.public_subnet_id
   security_group_id = module.security.security_group_id
   instance_profile  = module.security.instance_profile_name
