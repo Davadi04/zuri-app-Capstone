@@ -10,12 +10,12 @@ provider "aws" {
 }
 
 module "network" {
-  source               = "../../modules/network"
-  name                 = "zuri-${var.env}"
-  vpc_cidr             = var.vpc_cidr
-  public_subnet_cidr   = var.public_subnet_cidr
-  private_subnet_cidr  = var.private_subnet_cidr
-  az                   = "${var.region}a"
+  source              = "../../modules/network"
+  name                = "zuri-${var.env}"
+  vpc_cidr            = var.vpc_cidr
+  public_subnet_cidr  = var.public_subnet_cidr
+  private_subnet_cidr = var.private_subnet_cidr
+  az                  = "${var.region}a"
 }
 
 module "secrets" {
@@ -24,11 +24,11 @@ module "secrets" {
 }
 
 module "security" {
-  source              = "../../modules/security"
-  name                = "zuri-${var.env}"
-  vpc_id              = module.network.vpc_id
-  allowed_http_cidrs  = var.allowed_http_cidrs
-  secret_arns         = module.secrets.secret_arns
+  source             = "../../modules/security"
+  name               = "zuri-${var.env}"
+  vpc_id             = module.network.vpc_id
+  allowed_http_cidrs = var.allowed_http_cidrs
+  secret_arns        = module.secrets.secret_arns
 }
 
 module "compute" {
