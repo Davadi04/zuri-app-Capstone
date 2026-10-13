@@ -34,7 +34,7 @@ resource "aws_instance" "node" {
   vpc_security_group_ids      = [var.security_group_id]
   iam_instance_profile        = var.instance_profile
   associate_public_ip_address = true
-  user_data                   = templatefile("${path.module}/user_data.sh.tftpl", { region = var.region })
+  user_data = templatefile("${path.module}/user_data.sh.tftpl", { region = var.region, github_repo = "Davadi04/zuri-app-Capstone" })
 
   metadata_options {
     http_tokens                 = "required"

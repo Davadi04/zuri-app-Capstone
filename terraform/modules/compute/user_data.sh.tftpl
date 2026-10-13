@@ -12,3 +12,44 @@ echo "export KUBECONFIG=/etc/rancher/k3s/k3s.yaml" > /etc/profile.d/k3s.sh
 curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL=stable sh -s - server --write-kubeconfig-mode 644
 
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+# Wait for k3s to be ready before doing anything else
+for i in $(seq 1 30); do
+  k3s kubectl get nodes && break
+  sleep 5
+done
+
+cd /opt/zuri
+git clone https://github.com/${github_repo}.git zuri-app-Capstone
+cd zuri-app-Capstone
+
+k3s kubectl apply -f k8s/namespace.yaml
+
+chmod +x scripts/health-check.sh scripts/sync-secrets.sh
+install -m 755 scripts/health-check.sh /opt/zuri/health-check.sh
+echo '0 6 * * * root /opt/zuri/health-check.sh >> /var/log/zuri/cron.log 2>&1' > /etc/cron.d/zuri-health
+
+./scripts/sync-secrets.sh dev
+
+k3s kubectl apply -f k8s/backend/configmap.yaml -f k8s/backend/deployment.yaml -f k8s/backend/service.yaml
+k3s kubectl apply -f k8s/frontend/
+k3s kubectl apply -f k8s/ingress.yaml
+
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
+k3s kubectl create namespace monitoring
+k3s kubectl -n monitoring create secret generic grafana-admin \
+  --from-literal=admin-user=admin --from-literal=admin-password="$(openssl rand -base64 18)"
+
+helm install monitoring prometheus-community/kube-prometheus-stack -n monitoring \
+  --set alertmanager.enabled=false \
+  --set grafana.admin.existingSecret=grafana-admin \
+  --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+  --set prometheus.prometheusSpec.retention=3d \
+  --set kubeControllerManager.enabled=false --set kubeScheduler.enabled=false \
+  --set kubeEtcd.enabled=false --set kubeProxy.enabled=false
+
+k3s kubectl apply -f k8s/backend/servicemonitor.yaml
