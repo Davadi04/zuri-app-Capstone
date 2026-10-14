@@ -6,7 +6,51 @@ Zuri Market deployed by SSHing into a server, running `git pull`, and restarting
 
 ## End-to-end flow
 
-```mermaid
+  Developer
+      |
+      v  git push (feature branch)
+  Pull Request into main
+      |
+      v  GitHub Actions: lint, test, SonarQube gate, Trivy scan
+  Review comment + merge
+      |
+      v
+  main branch (protected, no direct pushes)
+      |
+      +----------------------------+
+      |                            |
+      v                            v
+  Build Docker image       terraform/ changed?
+      |                       /         \
+      v                     yes          no
+  Trivy security scan        |         (skipped)
+      |                      v
+      v                 Terraform apply
+  Push to GHCR          (infrastructure)
+  (tagged by SHA)             |
+      |                       |
+      v                       v
+  Deploy via AWS SSM --> EC2 instance (k3s / Kubernetes)
+      |                       |
+      v                       v
+  ===================================================
+                AWS  —  eu-west-2 / VPC
+  ===================================================
+  EC2 instance:
+    Traefik Ingress
+      |-- "/"     --> Frontend Deployment (React + nginx)
+      |-- "/api"  --> Backend Deployment  (Node + Express)
+    Frontend --> relative /api/* calls --> Ingress --> Backend
+
+    Prometheus --> scrapes /metrics --> Backend
+    Grafana    --> queries --> Prometheus
+    cron (health-check.sh, daily 06:00 UTC) --> checks / and /api/health
+
+  AWS Secrets Manager --> synced at deploy time --> Backend
+  IAM role (SSM + read one secret only) --> assumed by --> EC2
+
+  Customer --> HTTP port 80 (no SSH anywhere) --> Ingress
+  You --> AWS SSM Session Manager (no SSH key, every session logged) --> EC2
 flowchart TD
     Dev[Developer] -->|git push, feature branch| PR[Pull Request into main]
     PR --> CI[GitHub Actions: lint, test,<br/>SonarQube quality gate, Trivy scan]
